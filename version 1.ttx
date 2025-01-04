@@ -1,0 +1,102 @@
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
+import javafx.util.Pair;
+
+
+public class PopulationQuery {
+    public static final int TOKENS_PER_LINE  = 7;
+    public static final int POPULATION_INDEX = 4;
+    public static final int LATITUDE_INDEX   = 5;
+    public static final int LONGITUDE_INDEX  = 6;
+
+    public static CensusData data;
+
+    public static CensusData parse(String filename) {
+        CensusData result = new CensusData();
+        try (BufferedReader fileIn = new BufferedReader(new FileReader(filename))) {
+            String oneLine = fileIn.readLine();  // Skip the first line (header)
+            while ((oneLine = fileIn.readLine()) != null) {
+                String[] tokens = oneLine.split(",");
+                if (tokens.length != TOKENS_PER_LINE) {
+                    throw new NumberFormatException("Incorrect number of tokens in line.");
+                }
+                int population = Integer.parseInt(tokens[POPULATION_INDEX]);
+                if (population != 0) {
+                    result.add(population,
+                               Float.parseFloat(tokens[LATITUDE_INDEX]),
+                               Float.parseFloat(tokens[LONGITUDE_INDEX]));
+                }
+            }
+        } catch (IOException | NumberFormatException e) {
+            System.err.println("Error: " + e.getMessage());
+            System.exit(1);
+        }
+        return result;
+    }
+public static Pair<Integer, Float> queryPopulation(CensusData censusData, float w, float s, float e, float n) {
+    int totalPopulation = 0;
+    int totalUSPopulation = 0;
+
+    float latitudeRangeSize = 0.5f;  // Range size for each latitude bucket
+    int numLatitudeRanges = (int) ((n - s) / latitudeRangeSize); // Number of latitude ranges
+
+    int[] populationByLatitudeRange = new int[numLatitudeRanges];
+
+    for (int i = 0; i < censusData.size(); i++) {
+        CensusGroup group = censusData.data[i];
+        float lat = group.latitude;
+        float lon = group.longitude;
+
+        // Adjusted condition to work with float values
+        if (lat >= s && lat <= n && lon >= w && lon <= e) {
+            totalPopulation += group.population;
+            int latitudeRangeIndex = (int) ((lat - s) / latitudeRangeSize);
+            if (latitudeRangeIndex >= 0 && latitudeRangeIndex < populationByLatitudeRange.length) {
+                populationByLatitudeRange[latitudeRangeIndex] += group.population;
+            }
+        }
+        totalUSPopulation += group.population;
+    }
+
+    // Calculate the percentage of the total U.S. population
+    float percentage = totalUSPopulation > 0 ? (totalPopulation / (float) totalUSPopulation) * 100 : 0.0f;
+    return new Pair<>(totalPopulation, percentage);
+}
+
+
+ public static javafx.util.Pair<Integer, Float> singleInteraction(int w, int s, int e, int n) {
+    String filename = "CenPop2010.txt"; // Ensure the file exists and has the correct format
+    CensusData censusData = parse(filename);
+    return queryPopulation(censusData, w, s, e, n);
+}
+
+
+    public static void preprocess(String filename, int west, int south, int east) {
+        CensusData censusData = parse(filename);
+        System.out.println("Preprocessing complete for bounds:");
+        System.out.printf("West: %d, South: %d, East: %d, North: %d%n", west, south, east, 0); // Dummy 0 for north
+    }
+
+public static void main(String[] args) {
+    if (args.length != 4) {
+        System.out.println("Usage: java PopulationQuery <west> <south> <east> <north>");
+        return;
+    }
+
+    // Parse as float, not integer
+    float w = Float.parseFloat(args[0]);
+    float s = Float.parseFloat(args[1]);
+    float e = Float.parseFloat(args[2]);
+    float n = Float.parseFloat(args[3]);
+
+    String filename = "CenPop2010.txt";  // Make sure your file has the correct format
+    CensusData censusData = PopulationQuery.parse(filename);
+
+    // Assuming queryPopulation can now handle float values
+    Pair<Integer, Float> result = queryPopulation(censusData, w, s, e, n);
+    System.out.println("Population: " + result.getKey());
+    System.out.println("Percentage of U.S. Population: " + result.getValue() + "%");
+}
+
+}

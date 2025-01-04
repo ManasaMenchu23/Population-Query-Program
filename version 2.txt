@@ -1,0 +1,116 @@
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
+import javafx.util.Pair;
+import java.util.HashMap;
+import java.util.Map;
+
+public class PopulationQuery {
+
+    // Constants for splitting the grid into cells
+    private static final double LATITUDE_CELL_SIZE = 0.5;  // Size of each latitude cell
+    private static final double LONGITUDE_CELL_SIZE = 0.5; // Size of each longitude cell
+
+    public static final int TOKENS_PER_LINE = 7;
+    public static final int POPULATION_INDEX = 4;
+    public static final int LATITUDE_INDEX = 5;
+    public static final int LONGITUDE_INDEX = 6;
+
+    // This will store census block groups by grid cells
+    private static Map<String, CensusGroup> gridCellMap = new HashMap<>();
+
+    private static double minLat = Double.MAX_VALUE;
+    private static double maxLat = Double.MIN_VALUE;
+    private static double minLon = Double.MAX_VALUE;
+    private static double maxLon = Double.MIN_VALUE;
+
+    // Method to preprocess the data file
+    public static void preprocess(String filename, int columns, int rows, int versionNum) {
+        try (BufferedReader fileIn = new BufferedReader(new FileReader(filename))) {
+            String oneLine = fileIn.readLine(); // Skip header
+            while ((oneLine = fileIn.readLine()) != null) {
+                String[] tokens = oneLine.split(",");
+                if (tokens.length != TOKENS_PER_LINE) {
+                    throw new NumberFormatException("Incorrect number of tokens in line.");
+                }
+
+                int population = Integer.parseInt(tokens[POPULATION_INDEX]);
+                if (population != 0) {
+                    float lat = Float.parseFloat(tokens[LATITUDE_INDEX]);
+                    float lon = Float.parseFloat(tokens[LONGITUDE_INDEX]);
+
+                    // Update min and max latitude and longitude
+                    minLat = Math.min(minLat, lat);
+                    maxLat = Math.max(maxLat, lat);
+                    minLon = Math.min(minLon, lon);
+                    maxLon = Math.max(maxLon, lon);
+
+                    // Map to grid cell
+                    String gridKey = getGridCellKey(lat, lon);
+                    gridCellMap.put(gridKey, new CensusGroup(population, lat, lon));
+                }
+            }
+        } catch (IOException | NumberFormatException e) {
+            System.err.println("Error while preprocessing file: " + e.getMessage());
+            System.exit(1);
+        }
+    }
+
+    // Method to handle population query within a geographical region
+    public static Pair<Integer, Float> singleInteraction(float w, float s, float e, float n) {
+        int totalPopulation = 0;
+        int totalUSPopulation = 0;
+
+        // Find relevant grid cells based on the query area
+        int latStart = (int) ((s - minLat) / LATITUDE_CELL_SIZE);
+        int latEnd = (int) ((n - minLat) / LATITUDE_CELL_SIZE);
+        int lonStart = (int) ((w - minLon) / LONGITUDE_CELL_SIZE);
+        int lonEnd = (int) ((e - minLon) / LONGITUDE_CELL_SIZE);
+
+        // Iterate over the relevant grid cells
+        for (int lat = latStart; lat <= latEnd; lat++) {
+            for (int lon = lonStart; lon <= lonEnd; lon++) {
+                String gridKey = lat + "_" + lon;
+                if (gridCellMap.containsKey(gridKey)) {
+                    CensusGroup group = gridCellMap.get(gridKey);
+                    totalPopulation += group.population;
+                }
+            }
+        }
+
+        // Calculate total US population and the percentage
+        for (CensusGroup group : gridCellMap.values()) {
+            totalUSPopulation += group.population;
+        }
+
+        float percentage = totalUSPopulation > 0 ? (totalPopulation / (float) totalUSPopulation) * 100 : 0.0f;
+        return new Pair<>(totalPopulation, percentage);
+    }
+
+    private static String getGridCellKey(float lat, float lon) {
+        int latCell = (int) ((lat - minLat) / LATITUDE_CELL_SIZE);
+        int lonCell = (int) ((lon - minLon) / LONGITUDE_CELL_SIZE);
+        return latCell + "_" + lonCell; // Unique key for the grid cell
+    }
+
+    public static void main(String[] args) {
+        if (args.length != 4) {
+            System.out.println("Usage: java PopulationQuery <west> <south> <east> <north>");
+            return;
+        }
+
+        // Parse as float, not integer
+        float w = Float.parseFloat(args[0]);
+        float s = Float.parseFloat(args[1]);
+        float e = Float.parseFloat(args[2]);
+        float n = Float.parseFloat(args[3]);
+
+        String filename = "CenPop2010.txt";  // Make sure your file has the correct format
+        preprocess(filename, 10, 10, 1); // Example of passing columns, rows, and version number
+
+        // Assuming singleInteraction can now handle float values
+        Pair<Integer, Float> result = singleInteraction(w, s, e, n);
+        System.out.println("Population: " + result.getKey());
+        System.out.println("Percentage of U.S. Population: " + result.getValue() + "%");
+    }
+}

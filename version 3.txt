@@ -1,0 +1,88 @@
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
+import javafx.util.Pair;
+
+public class PopulationQuery {
+
+    public static final int TOKENS_PER_LINE  = 7;
+    public static final int POPULATION_INDEX = 4;
+    public static final int LATITUDE_INDEX   = 5;
+    public static final int LONGITUDE_INDEX  = 6;
+
+    private static final double MIN_LAT = 24.396308;   // Minimum latitude of the U.S.
+    private static final double MAX_LAT = 49.384358;   // Maximum latitude of the U.S.
+    private static final double MIN_LON = -125.0;      // Minimum longitude of the U.S.
+    private static final double MAX_LON = -66.93457;   // Maximum longitude of the U.S.
+
+    public static CensusData parse(String filename) {
+        CensusData result = new CensusData();
+
+        try (BufferedReader fileIn = new BufferedReader(new FileReader(filename))) {
+            String oneLine = fileIn.readLine(); // Skip header
+            while ((oneLine = fileIn.readLine()) != null) {
+                String[] tokens = oneLine.split(",");
+                if (tokens.length != TOKENS_PER_LINE) {
+                    throw new NumberFormatException("Incorrect number of tokens in line.");
+                }
+                int population = Integer.parseInt(tokens[POPULATION_INDEX]);
+                if (population != 0) {
+                    float lat = Float.parseFloat(tokens[LATITUDE_INDEX]);
+                    float lon = Float.parseFloat(tokens[LONGITUDE_INDEX]);
+                    result.add(population, lat, lon); // Use the `add` method from CensusData
+                }
+            }
+        } catch (IOException | NumberFormatException e) {
+            System.err.println("Error while parsing file: " + e.getMessage());
+            System.exit(1);
+        }
+        return result;
+    }
+
+    public static Pair<Integer, Float> queryPopulation(CensusData censusData, double west, double south, double east, double north) {
+        int totalPopulation = 0;
+        int totalUSPopulation = 0;
+
+        for (int i = 0; i < censusData.size(); i++) {
+            CensusGroup group = censusData.data[i];
+
+            if (group != null) {
+                if (group.realLatitude >= south && group.realLatitude <= north &&
+                    group.longitude >= west && group.longitude <= east) {
+                    totalPopulation += group.population;
+                }
+
+                totalUSPopulation += group.population;
+            }
+        }
+
+        float percentage = (totalUSPopulation > 0) ? ((float) totalPopulation / totalUSPopulation) * 100 : 0;
+
+        return new Pair<>(totalPopulation, percentage);
+    }
+
+    public static void main(String[] args) {
+        if (args.length != 4) {
+            System.out.println("Usage: java PopulationQuery <west> <south> <east> <north>");
+            return;
+        }
+
+        try {
+            double west = Double.parseDouble(args[0]);
+            double south = Double.parseDouble(args[1]);
+            double east = Double.parseDouble(args[2]);
+            double north = Double.parseDouble(args[3]);
+
+            String filename = "CenPop2010.txt";
+            CensusData censusData = PopulationQuery.parse(filename);
+
+            Pair<Integer, Float> result = queryPopulation(censusData, west, south, east, north);
+            System.out.println("Population: " + result.getKey());
+            System.out.println("Percentage of U.S. Population: " + result.getValue() + "%");
+        } catch (NumberFormatException e) {
+            System.err.println("Error: Invalid coordinate format. Please enter numeric values.");
+        } catch (Exception e) {
+            System.err.println("An unexpected error occurred: " + e.getMessage());
+        }
+    }
+}
